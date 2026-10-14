@@ -78,9 +78,28 @@
       background: red;
       z-index: 10;
     }
+
+    /* Screen to bypass browser autoplay blocks */
+    #click-to-start {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.9);
+      color: white;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 24px;
+      font-weight: bold;
+      z-index: 10000;
+      cursor: pointer;
+      display: none; /* Hidden by default, shows only if blocked */
+    }
   </style>
 </head>
 <body>
+
+  <!-- Screen to bypass strict browser audio blocks -->
+  <div id="click-to-start">🎙️ Click anywhere to allow Microphone access</div>
 
   <!-- Live Debug Menu for tuning -->
   <div id="debug-ui">
@@ -99,13 +118,12 @@
 
   <script>
     // ==========================================
-    // CONFIGURATION: ONLY LOCAL GIFS CONFIGURED
+    // CONFIGURATION: SET YOUR GIF FILES HERE
     // ==========================================
     const CONFIG = {
-      // Set to false to hide the volume meter once you find your perfect threshold
+      // Change to false once you figure out your perfect volume threshold
       showDebugMenu: true, 
 
-      // Strictly using only your local GIF files
       files: {
         resting: 'resting.gif',
         talking: 'talking.gif',
@@ -113,20 +131,17 @@
         pushup:  'pushup.gif'
       },
 
-      // SENSITIVITY TWEAKS
-      // If the avatar talks when you are quiet, INCREASE this number.
+      // AUDIO SENSITIVITY TWEAKS
       volumeThreshold: 35, 
-      
-      // Makes the cut-off almost instant (50 milliseconds) when you stop talking.
-      holdTimeMs: 50,     
-
-      // Idle Sequence Timing (Strict 10-second cycles)
+      holdTimeMs: 50,      
       idleCycleTimeMs: 10000 
     };
 
+    // The list of animations to play randomly when quiet
+    const IDLE_STATES = ['resting', 'stretch', 'pushup'];
     const preloadedImages = {}; 
 
-    // Setup Debug UI dynamically
+    // Setup Debug UI
     if (CONFIG.showDebugMenu) {
       document.getElementById('debug-ui').style.display = 'block';
       document.getElementById('debug-thresh').innerText = CONFIG.volumeThreshold;
@@ -148,16 +163,13 @@
         this.currentState = null;
         this.idleCycleTimer = null;
         this.talkHoldTimer = null;
-        
-        // Only non-talking GIFs go in this pool
-        this.idleSequence = ['resting', 'stretch', 'pushup'];
       }
 
       setState(newState) {
         if (this.currentState === newState) return;
         this.currentState = newState;
         
-        // Force replace the GIF instantly to cut off previous animations
+        // Force replace the GIF instantly
         this.imgElement.src = CONFIG.files[newState];
 
         if (CONFIG.showDebugMenu) {
@@ -166,26 +178,23 @@
         }
       }
 
-      // Helper function to pick a random idle animation without repeating
-      getRandomIdleState() {
-        let nextState = this.idleSequence[Math.floor(Math.random() * this.idleSequence.length)];
+      setRandomIdleState() {
+        let nextState;
+        // Loop ensures we don't pick the same animation twice in a row
+        do {
+          nextState = IDLE_STATES[Math.floor(Math.random() * IDLE_STATES.length)];
+        } while (nextState === this.currentState && IDLE_STATES.length > 1);
         
-        // Loop until we get a DIFFERENT animation than the current one
-        while (nextState === this.currentState && this.idleSequence.length > 1) {
-          nextState = this.idleSequence[Math.floor(Math.random() * this.idleSequence.length)];
-        }
-        return nextState;
+        this.setState(nextState);
       }
 
       startIdleCycle() {
         this.stopIdleCycle(); 
+        this.setRandomIdleState(); // Pick a random gif immediately upon becoming quiet
         
-        // Instantly trigger a random resting animation
-        this.setState(this.getRandomIdleState());
-        
-        // Switch to a new random animation every 10 seconds
+        // Keep picking new random gifs every X seconds while quiet
         this.idleCycleTimer = setInterval(() => {
-          this.setState(this.getRandomIdleState());
+          this.setRandomIdleState();
         }, CONFIG.idleCycleTimeMs);
       }
 
@@ -199,7 +208,7 @@
       processAudioFrame(volume) {
         const isLoud = volume > CONFIG.volumeThreshold;
 
-        // Update visual Debug Meter Live
+        // Update Debug UI Live
         if (CONFIG.showDebugMenu) {
           document.getElementById('debug-vol').innerText = Math.round(volume);
           const volPercent = Math.min((volume / 100) * 100, 100);
@@ -209,7 +218,6 @@
         }
 
         if (isLoud) {
-          // If sound detected, clear any pending timeouts dropping us back to idle
           if (this.talkHoldTimer) {
             clearTimeout(this.talkHoldTimer);
             this.talkHoldTimer = null;
@@ -217,11 +225,11 @@
           
           if (this.currentState !== 'talking') {
             this.stopIdleCycle(); 
-            this.setState('talking'); // Instant cut to talking GIF
+            this.setState('talking'); // Instant cut to talking
           }
         } else {
-          // If we drop below threshold, cut back to random idle almost instantly (50ms)
           if (this.currentState === 'talking' && !this.talkHoldTimer) {
+            // Cut back to a RANDOM resting animation almost instantly
             this.talkHoldTimer = setTimeout(() => {
               this.startIdleCycle(); 
               this.talkHoldTimer = null;
@@ -243,22 +251,30 @@
 
       async start() {
         try {
-          // Directly requests the browser's native microphone prompt immediately
+          // This naturally prompts the browser to ask for Microphone access
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
           
           const AudioContext = window.AudioContext || window.webkitAudioContext;
           this.audioContext = new AudioContext();
-
-          // Resume audio context in case the browser suspended it due to auto-play policies
+          
+          // Fallback logic: If the browser suspends the audio context due to lack of click, show the unlock screen
           if (this.audioContext.state === 'suspended') {
-            await this.audioContext.resume();
+            const unlockScreen = document.getElementById('click-to-start');
+            unlockScreen.style.display = 'flex';
+            
+            await new Promise(resolve => {
+              unlockScreen.onclick = () => {
+                this.audioContext.resume();
+                unlockScreen.style.display = 'none';
+                resolve();
+              };
+            });
           }
 
           this.analyser = this.audioContext.createAnalyser();
           this.microphone = this.audioContext.createMediaStreamSource(stream);
           this.microphone.connect(this.analyser);
 
-          // Fast smoothing constant for snappy visual reaction
           this.analyser.smoothingTimeConstant = 0.2; 
           this.analyser.fftSize = 256;
           this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
@@ -267,7 +283,9 @@
           this.loop();
           return true;
         } catch (err) {
-          console.error("Microphone natively blocked by browser:", err);
+          console.warn("Microphone access blocked or failed:", err);
+          document.getElementById('click-to-start').innerText = "❌ Microphone access blocked. Check browser settings.";
+          document.getElementById('click-to-start').style.display = 'flex';
           return false;
         }
       }
@@ -289,7 +307,6 @@
     }
 
     document.addEventListener('DOMContentLoaded', async () => {
-      // Pre-cache GIF files for instant swapping
       preloadAssets();
 
       const avatarImg = document.getElementById('avatar');
@@ -299,11 +316,14 @@
         avatarController.processAudioFrame(volume);
       });
 
-      // Start the 10-second random GIF loop immediately
-      avatarController.startIdleCycle();
+      // Show resting image immediately before mic starts
+      avatarController.setState('resting');
 
-      // Trigger the native browser microphone prompt automatically
-      await audioEngine.start();
+      // Boot up the microphone processing
+      const micSuccess = await audioEngine.start();
+      if (micSuccess) {
+         avatarController.startIdleCycle();
+      }
     });
   </script>
 </body>
