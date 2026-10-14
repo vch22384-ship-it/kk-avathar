@@ -7,7 +7,7 @@
   
   <style>
     :root {
-      --bg-color: transparent; /* Essential for OBS */
+      --bg-color: transparent; 
       --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
 
@@ -23,7 +23,6 @@
       font-family: var(--font-family);
     }
 
-    /* Container for the avatar to ensure proper scaling */
     #avatar-container {
       position: relative;
       width: 100%;
@@ -37,21 +36,77 @@
       max-width: 100%;
       max-height: 100%;
       object-fit: contain;
-      /* Instant swapping is better for reactive talking to avoid ghosting */
+    }
+
+    /* Debug UI to help you tune your mic sensitivity */
+    #debug-ui {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 10px 15px;
+      border-radius: 5px;
+      font-family: monospace;
+      font-size: 14px;
+      z-index: 9999;
+      display: none; /* Controlled by JS config */
+    }
+
+    #vol-bar-container {
+      width: 150px;
+      height: 10px;
+      background: #333;
+      margin-top: 8px;
+      border-radius: 2px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    #vol-bar {
+      width: 0%;
+      height: 100%;
+      background: lime;
+      transition: width 0.05s ease;
+    }
+    
+    #thresh-line {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: red;
+      z-index: 10;
     }
   </style>
 </head>
 <body>
+
+  <!-- Live Debug Menu for tuning -->
+  <div id="debug-ui">
+    <div>State: <span id="debug-state" style="color: #f1c40f;">resting</span></div>
+    <div>Vol: <span id="debug-vol">0</span> / Thresh: <span id="debug-thresh">35</span></div>
+    <div id="vol-bar-container">
+      <div id="thresh-line"></div>
+      <div id="vol-bar"></div>
+    </div>
+  </div>
+
+  <!-- The Avatar Container -->
+  <div id="avatar-container">
+    <img id="avatar" src="" alt="Reactive Avatar">
+  </div>
 
   <script>
     // ==========================================
     // CONFIGURATION: SET YOUR GIF FILES HERE
     // ==========================================
     const CONFIG = {
-      // Set to false to use your actual local GIF files for OBS
       usePlaceholders: false, 
+      
+      // Change to false once you figure out your perfect volume threshold
+      showDebugMenu: true, 
 
-      // Your actual file names
       files: {
         resting: 'resting.gif',
         talking: 'talking.gif',
@@ -59,7 +114,6 @@
         pushup:  'pushup.gif'
       },
 
-      // Placeholders used for testing (Color coded)
       placeholders: {
         resting: 'https://placehold.co/600x600/2ecc71/ffffff?text=Resting+(Quiet)',
         talking: 'https://placehold.co/600x600/e74c3c/ffffff?text=Talking!!!',
@@ -67,68 +121,74 @@
         pushup:  'https://placehold.co/600x600/3498db/ffffff?text=Doing+Pushups...'
       },
 
-      // Audio Settings
-      volumeThreshold: 15, // 0 to 100. Lower = more sensitive
-      holdTimeMs: 150,     // Time to wait after you stop talking before going to resting
+      // AUDIO SENSITIVITY TWEAKS
+      volumeThreshold: 35, 
+      holdTimeMs: 50,     
 
       // Idle Sequence Timing (Strict 10-second cycles)
       idleCycleTimeMs: 10000 
     };
 
-    // Determine which set of images to use based on config
     const ASSETS = CONFIG.usePlaceholders ? CONFIG.placeholders : CONFIG.files;
     const preloadedImages = {}; 
 
-    // Preload assets to prevent flickering on first load
+    // Setup Debug UI
+    if (CONFIG.showDebugMenu) {
+      document.getElementById('debug-ui').style.display = 'block';
+      document.getElementById('debug-thresh').innerText = CONFIG.volumeThreshold;
+      const threshPercent = Math.min((CONFIG.volumeThreshold / 100) * 100, 100);
+      document.getElementById('thresh-line').style.left = threshPercent + '%';
+    }
+
     function preloadAssets() {
       for (const [key, src] of Object.entries(ASSETS)) {
         const img = new Image();
         img.src = src;
         preloadedImages[key] = img;
       }
-      console.log("Assets preloaded successfully.");
     }
 
-    // Finite State Machine (FSM) to handle strict sequential transitions
     class AvatarBrain {
       constructor(imgElement) {
         this.imgElement = imgElement;
         this.currentState = null;
         this.idleCycleTimer = null;
         this.talkHoldTimer = null;
+        // The list of gifs to randomly pick from when NOT talking
         this.idleSequence = ['resting', 'stretch', 'pushup'];
-        this.lastIdleState = null;
+      }
+
+      // "Smart" randomizer: Picks a random idle state, but guarantees 
+      // it won't pick the exact same state twice in a row.
+      getRandomIdleState() {
+        let nextState;
+        do {
+          const randomIndex = Math.floor(Math.random() * this.idleSequence.length);
+          nextState = this.idleSequence[randomIndex];
+        } while (nextState === this.currentState && this.idleSequence.length > 1);
+        return nextState;
       }
 
       setState(newState) {
+        if (this.currentState === newState) return;
+        this.currentState = newState;
+        
+        // Force replace the GIF instantly to cut off previous animations
+        this.imgElement.src = ASSETS[newState];
+
         if (CONFIG.showDebugMenu) {
           document.getElementById('debug-state').innerText = newState;
           document.getElementById('debug-state').style.color = (newState === 'talking') ? '#e74c3c' : '#f1c40f';
         }
       }
 
-      getRandomIdleState() {
-        // Filter out the last played idle state to prevent consecutive duplicates
-        const availableStates = this.idleSequence.filter(state => state !== this.lastIdleState);
-        const randomIndex = Math.floor(Math.random() * availableStates.length);
-        const chosenState = availableStates[randomIndex];
-        this.lastIdleState = chosenState;
-        return chosenState;
-      }
-
-      startIdleCycle(isInitialLoad = false) {
+      startIdleCycle() {
         this.stopIdleCycle(); 
         
-        let nextState;
-        if (isInitialLoad) {
-          nextState = 'resting';
-          this.lastIdleState = 'resting';
-        } else {
-          nextState = this.getRandomIdleState();
-        }
-
-        this.setState(nextState);
+        // As soon as you stop talking, pick a random idle animation immediately
+        this.setState(this.getRandomIdleState());
         
+        // Every 10 seconds, pick a new random idle animation
         this.idleCycleTimer = setInterval(() => {
           this.setState(this.getRandomIdleState());
         }, CONFIG.idleCycleTimeMs);
@@ -144,22 +204,30 @@
       processAudioFrame(volume) {
         const isLoud = volume > CONFIG.volumeThreshold;
 
+        // Update Debug UI Live
+        if (CONFIG.showDebugMenu) {
+          document.getElementById('debug-vol').innerText = Math.round(volume);
+          const volPercent = Math.min((volume / 100) * 100, 100);
+          const bar = document.getElementById('vol-bar');
+          bar.style.width = volPercent + '%';
+          bar.style.background = isLoud ? 'red' : 'lime';
+        }
+
         if (isLoud) {
-          // If we are currently holding the talking state, cancel the timeout
           if (this.talkHoldTimer) {
             clearTimeout(this.talkHoldTimer);
             this.talkHoldTimer = null;
           }
           
           if (this.currentState !== 'talking') {
-            this.stopIdleCycle(); // Instantly interrupt any non-talking GIF
-            this.setState('talking');
+            this.stopIdleCycle(); 
+            this.setState('talking'); // Instant cut to talking
           }
         } else {
           if (this.currentState === 'talking' && !this.talkHoldTimer) {
-            // Cut back to resting almost instantly (50ms)
+            // Cut back to a random idle animation almost instantly
             this.talkHoldTimer = setTimeout(() => {
-              this.startIdleCycle(false); // Start random idle cycle
+              this.startIdleCycle(); 
               this.talkHoldTimer = null;
             }, CONFIG.holdTimeMs);
           }
@@ -188,8 +256,7 @@
           this.microphone = this.audioContext.createMediaStreamSource(stream);
           this.microphone.connect(this.analyser);
 
-          // Configure analyser for smooth volume reading
-          this.analyser.smoothingTimeConstant = 0.5; // Adjusted for snappy response
+          this.analyser.smoothingTimeConstant = 0.2; 
           this.analyser.fftSize = 256;
           this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
 
@@ -198,7 +265,6 @@
           return true;
         } catch (err) {
           console.warn("Microphone access blocked or failed:", err);
-          // Removed alert() here so OBS doesn't freeze on errors
           return false;
         }
       }
@@ -229,7 +295,7 @@
         avatarController.processAudioFrame(volume);
       });
 
-      avatarController.startIdleCycle(true); // True ensures 'resting' on first load
+      avatarController.startIdleCycle();
       await audioEngine.start();
     });
   </script>
