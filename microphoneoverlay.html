@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Advanced Reactive Avatar Overlay</title>
+  
+  <style>
+    :root {
+      --bg-color: transparent; 
+      --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg-color);
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      font-family: var(--font-family);
+    }
+
+    #avatar-container {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    img#avatar {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+
+    /* Debug UI to help you tune your mic sensitivity */
+    #debug-ui {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 10px 15px;
+      border-radius: 5px;
+      font-family: monospace;
+      font-size: 14px;
+      z-index: 9999;
+      display: none; /* Controlled by JS config */
+    }
+
+    #vol-bar-container {
+      width: 150px;
+      height: 10px;
+      background: #333;
+      margin-top: 8px;
+      border-radius: 2px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    #vol-bar {
+      width: 0%;
+      height: 100%;
+      background: lime;
+      transition: width 0.05s ease;
+    }
+    
+    #thresh-line {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: red;
+      z-index: 10;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Live Debug Menu for tuning -->
+  <div id="debug-ui">
+    <div>State: <span id="debug-state" style="color: #f1c40f;">resting</span></div>
+    <div>Vol: <span id="debug-vol">0</span> / Thresh: <span id="debug-thresh">35</span></div>
+    <div id="vol-bar-container">
+      <div id="thresh-line"></div>
+      <div id="vol-bar"></div>
+    </div>
+  </div>
+
+  <!-- The Avatar Container -->
+  <div id="avatar-container">
+    <img id="avatar" src="" alt="Reactive Avatar">
+  </div>
+
+  <script>
+    // ==========================================
+    // CONFIGURATION: SET YOUR GIF FILES HERE
+    // ==========================================
+    const CONFIG = {
+      usePlaceholders: false, 
+      
+      // Change to false once you figure out your perfect volume threshold
+      showDebugMenu: true, 
+
+      files: {
+        resting: 'resting.gif',
+        talking: 'talking.gif',
+        stretch: 'stretch.gif',
+        pushup:  'pushup.gif'
+      },
+
+      placeholders: {
+        resting: 'https://placehold.co/600x600/2ecc71/ffffff?text=Resting+(Quiet)',
+        talking: 'https://placehold.co/600x600/e74c3c/ffffff?text=Talking!!!',
+        stretch: 'https://placehold.co/600x600/f1c40f/ffffff?text=Stretching...',
+        pushup:  'https://placehold.co/600x600/3498db/ffffff?text=Doing+Pushups...'
+      },
+
+      // AUDIO SENSITIVITY TWEAKS
+      // If the avatar keeps talking when you are quiet, INCREASE this number.
+      volumeThreshold: 35, 
+      
+      // Makes the cut-off almost instant (50 milliseconds) when you stop talking.
+      holdTimeMs: 50,     
+
+      // Idle Sequence Timing (Strict 10-second cycles)
+      idleCycleTimeMs: 10000 
+    };
+
+    const ASSETS = CONFIG.usePlaceholders ? CONFIG.placeholders : CONFIG.files;
+    const preloadedImages = {}; 
+
+    // Setup Debug UI
+    if (CONFIG.showDebugMenu) {
+      document.getElementById('debug-ui').style.display = 'block';
+      document.getElementById('debug-thresh').innerText = CONFIG.volumeThreshold;
+      // Position the red threshold line on the visual bar
+      const threshPercent = Math.min((CONFIG.volumeThreshold / 100) * 100, 100);
+      document.getElementById('thresh-line').style.left = threshPercent + '%';
+    }
+
+    function preloadAssets() {
+      for (const [key, src] of Object.entries(ASSETS)) {
+        const img = new Image();
+        img.src = src;
+        preloadedImages[key] = img;
+      }
+    }
+
+    class AvatarBrain {
+      constructor(imgElement) {
+        this.imgElement = imgElement;
+        this.currentState = null;
+        this.idleCycleTimer = null;
+        this.talkHoldTimer = null;
+        this.idleSequence = ['resting', 'stretch', 'pushup'];
+        this.currentIdleIndex = 0;
+      }
+
+      setState(newState) {
+        if (this.currentState === newState) return;
+        this.currentState = newState;
+        
+        // Force replace the GIF instantly to cut off previous animations
+        this.imgElement.src = ASSETS[newState];
+
+        if (CONFIG.showDebugMenu) {
+          document.getElementById('debug-state').innerText = newState;
+          document.getElementById('debug-state').style.color = (newState === 'talking') ? '#e74c3c' : '#f1c40f';
+        }
+      }
+
+      startIdleCycle() {
+        this.stopIdleCycle(); 
+        this.currentIdleIndex = 0; 
+        this.setState(this.idleSequence[this.currentIdleIndex]);
+        
+        this.idleCycleTimer = setInterval(() => {
+          this.currentIdleIndex = (this.currentIdleIndex + 1) % this.idleSequence.length;
+          this.setState(this.idleSequence[this.currentIdleIndex]);
+        }, CONFIG.idleCycleTimeMs);
+      }
+
+      stopIdleCycle() {
+        if (this.idleCycleTimer) {
+          clearInterval(this.idleCycleTimer);
+          this.idleCycleTimer = null;
+        }
+      }
+
+      processAudioFrame(volume) {
+        const isLoud = volume > CONFIG.volumeThreshold;
+
+        // Update Debug UI Live
+        if (CONFIG.showDebugMenu) {
+          document.getElementById('debug-vol').innerText = Math.round(volume);
+          const volPercent = Math.min((volume / 100) * 100, 100);
+          const bar = document.getElementById('vol-bar');
+          bar.style.width = volPercent + '%';
+          bar.style.background = isLoud ? 'red' : 'lime';
+        }
+
+        if (isLoud) {
+          if (this.talkHoldTimer) {
+            clearTimeout(this.talkHoldTimer);
+            this.talkHoldTimer = null;
+          }
+          
+          if (this.currentState !== 'talking') {
+            this.stopIdleCycle(); 
+            this.setState('talking'); // Instant cut to talking
+          }
+        } else {
+          if (this.currentState === 'talking' && !this.talkHoldTimer) {
+            // Cut back to resting almost instantly (50ms)
+            this.talkHoldTimer = setTimeout(() => {
+              this.startIdleCycle(); 
+              this.talkHoldTimer = null;
+            }, CONFIG.holdTimeMs);
+          }
+        }
+      }
+    }
+
+    class AudioEngine {
+      constructor(onVolumeUpdate) {
+        this.onVolumeUpdate = onVolumeUpdate;
+        this.audioContext = null;
+        this.analyser = null;
+        this.microphone = null;
+        this.dataArray = null;
+        this.isListening = false;
+      }
+
+      async start() {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          this.audioContext = new AudioContext();
+          this.analyser = this.audioContext.createAnalyser();
+          
+          this.microphone = this.audioContext.createMediaStreamSource(stream);
+          this.microphone.connect(this.analyser);
+
+          this.analyser.smoothingTimeConstant = 0.2; // Made much lower for instant reaction time
+          this.analyser.fftSize = 256;
+          this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+
+          this.isListening = true;
+          this.loop();
+          return true;
+        } catch (err) {
+          console.warn("Microphone access blocked or failed:", err);
+          return false;
+        }
+      }
+
+      loop() {
+        if (!this.isListening) return;
+
+        this.analyser.getByteFrequencyData(this.dataArray);
+        
+        let sum = 0;
+        for (let i = 0; i < this.dataArray.length; i++) {
+          sum += this.dataArray[i];
+        }
+        let averageVolume = sum / this.dataArray.length;
+
+        this.onVolumeUpdate(averageVolume);
+        requestAnimationFrame(() => this.loop());
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      preloadAssets();
+
+      const avatarImg = document.getElementById('avatar');
+      
+      const avatarController = new AvatarBrain(avatarImg);
+      const audioEngine = new AudioEngine((volume) => {
+        avatarController.processAudioFrame(volume);
+      });
+
+      avatarController.startIdleCycle();
+      await audioEngine.start();
+    });
+  </script>
+</body>
+</html>
