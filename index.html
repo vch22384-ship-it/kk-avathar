@@ -7,7 +7,7 @@
   
   <style>
     :root {
-      --bg-color: transparent; /* Essential for OBS */
+      --bg-color: transparent; 
       --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
 
@@ -15,16 +15,14 @@
       margin: 0;
       padding: 0;
       background-color: var(--bg-color);
-      overflow: hidden; /* Prevent scrollbars */
+      overflow: hidden;
       display: flex;
       justify-content: center;
       align-items: center;
       height: 100vh;
       font-family: var(--font-family);
-      user-select: none;
     }
 
-    /* Container for the avatar to ensure proper scaling */
     #avatar-container {
       position: relative;
       width: 100%;
@@ -38,42 +36,38 @@
       max-width: 100%;
       max-height: 100%;
       object-fit: contain;
-      /* Instant swapping is better for reactive talking to avoid ghosting */
     }
 
-    /* Debug UI to help tune mic sensitivity */
+    /* Debug UI to help you tune your mic sensitivity */
     #debug-ui {
       position: absolute;
       top: 10px;
       left: 10px;
-      background: rgba(0, 0, 0, 0.85);
+      background: rgba(0, 0, 0, 0.8);
       color: white;
-      padding: 12px 18px;
-      border-radius: 8px;
+      padding: 10px 15px;
+      border-radius: 5px;
       font-family: monospace;
       font-size: 14px;
       z-index: 9999;
       display: none; /* Controlled by JS config */
-      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-      border: 1px solid rgba(255,255,255,0.1);
     }
 
     #vol-bar-container {
-      width: 180px;
-      height: 12px;
+      width: 150px;
+      height: 10px;
       background: #333;
-      margin-top: 10px;
-      border-radius: 6px;
+      margin-top: 8px;
+      border-radius: 2px;
       overflow: hidden;
       position: relative;
-      border: 1px solid #111;
     }
 
     #vol-bar {
       width: 0%;
       height: 100%;
-      background: #2ecc71;
-      transition: width 0.05s ease, background-color 0.1s ease;
+      background: lime;
+      transition: width 0.05s ease;
     }
     
     #thresh-line {
@@ -81,67 +75,17 @@
       top: 0;
       bottom: 0;
       width: 2px;
-      background: #e74c3c;
+      background: red;
       z-index: 10;
-      box-shadow: 0 0 4px #e74c3c;
-    }
-
-    /* Click-to-Start Overlay to bypass browser autoplay policies */
-    #start-overlay {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      background: rgba(15, 23, 42, 0.9);
-      color: white;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      z-index: 10000;
-      cursor: pointer;
-      backdrop-filter: blur(5px);
-      transition: opacity 0.3s ease;
-    }
-
-    #start-overlay h1 {
-      font-size: 2rem;
-      margin-bottom: 10px;
-      text-shadow: 0 2px 4px rgba(0,0,0,0.5);
-    }
-
-    #start-overlay p {
-      font-size: 1.1rem;
-      color: #cbd5e1;
-      max-width: 400px;
-      text-align: center;
-    }
-
-    .pulse {
-      animation: pulse 2s infinite;
-    }
-
-    @keyframes pulse {
-      0% { opacity: 0.7; transform: scale(0.98); }
-      50% { opacity: 1; transform: scale(1.02); }
-      100% { opacity: 0.7; transform: scale(0.98); }
     }
   </style>
 </head>
 <body>
 
-  <!-- Start Overlay for User Interaction -->
-  <div id="start-overlay" class="pulse">
-    <h1>Click Anywhere to Start</h1>
-    <p>Modern browsers require a click to enable microphone access and audio processing.</p>
-  </div>
-
   <!-- Live Debug Menu for tuning -->
   <div id="debug-ui">
-    <div style="margin-bottom: 6px; font-weight: bold; border-bottom: 1px solid #555; padding-bottom: 4px;">Avatar Status</div>
-    <div>State: <span id="debug-state" style="color: #2ecc71; font-weight: bold;">resting</span></div>
-    <div style="margin-top: 6px;">Vol: <span id="debug-vol">0</span> / Thresh: <span id="debug-thresh">35</span></div>
+    <div>State: <span id="debug-state" style="color: #f1c40f;">resting</span></div>
+    <div>Vol: <span id="debug-vol">0</span> / Thresh: <span id="debug-thresh">35</span></div>
     <div id="vol-bar-container">
       <div id="thresh-line"></div>
       <div id="vol-bar"></div>
@@ -155,51 +99,47 @@
 
   <script>
     // ==========================================
-    // CONFIGURATION: SETTINGS AND ASSETS
+    // CONFIGURATION: ONLY LOCAL GIFS CONFIGURED
     // ==========================================
     const CONFIG = {
-      // Set to true to show the live volume meter (useful for initial setup)
+      // Set to false to hide the volume meter once you find your perfect threshold
       showDebugMenu: true, 
 
-      // Placeholders used for testing (Color coded)
-      // Replace these URLs with your actual local file paths like 'talking.gif' when ready.
-      assets: {
-        resting: 'https://placehold.co/600x600/2ecc71/ffffff?text=Resting+(Quiet)',
-        talking: 'https://placehold.co/600x600/e74c3c/ffffff?text=Talking!!!',
-        stretch: 'https://placehold.co/600x600/f1c40f/ffffff?text=Stretching...',
-        pushup:  'https://placehold.co/600x600/3498db/ffffff?text=Doing+Pushups...'
+      // Strictly using only your local GIF files
+      files: {
+        resting: 'resting.gif',
+        talking: 'talking.gif',
+        stretch: 'stretch.gif',
+        pushup:  'pushup.gif'
       },
 
-      // AUDIO SENSITIVITY TWEAKS
-      // If the avatar keeps talking when you are quiet, INCREASE this number.
-      volumeThreshold: 30, 
+      // SENSITIVITY TWEAKS
+      // If the avatar talks when you are quiet, INCREASE this number.
+      volumeThreshold: 35, 
       
       // Makes the cut-off almost instant (50 milliseconds) when you stop talking.
       holdTimeMs: 50,     
 
-      // Idle Sequence Timing (10-second cycles)
+      // Idle Sequence Timing (Strict 10-second cycles)
       idleCycleTimeMs: 10000 
     };
 
     const preloadedImages = {}; 
 
-    // Setup Debug UI initial state
+    // Setup Debug UI dynamically
     if (CONFIG.showDebugMenu) {
       document.getElementById('debug-ui').style.display = 'block';
       document.getElementById('debug-thresh').innerText = CONFIG.volumeThreshold;
-      // Position the red threshold line on the visual bar
       const threshPercent = Math.min((CONFIG.volumeThreshold / 100) * 100, 100);
       document.getElementById('thresh-line').style.left = threshPercent + '%';
     }
 
-    // Preload all assets to memory to prevent flickering when swapping src
     function preloadAssets() {
-      for (const [key, src] of Object.entries(CONFIG.assets)) {
+      for (const [key, src] of Object.entries(CONFIG.files)) {
         const img = new Image();
         img.src = src;
         preloadedImages[key] = img;
       }
-      console.log("Assets preloaded successfully.");
     }
 
     class AvatarBrain {
@@ -209,7 +149,7 @@
         this.idleCycleTimer = null;
         this.talkHoldTimer = null;
         
-        // These are the possible GIFs to show when NOT talking
+        // Only non-talking GIFs go in this pool
         this.idleSequence = ['resting', 'stretch', 'pushup'];
       }
 
@@ -217,25 +157,20 @@
         if (this.currentState === newState) return;
         this.currentState = newState;
         
-        // Force replace the GIF instantly to cut off previous animations.
-        // Because they are preloaded, this hits the browser cache instantly.
-        this.imgElement.src = CONFIG.assets[newState];
+        // Force replace the GIF instantly to cut off previous animations
+        this.imgElement.src = CONFIG.files[newState];
 
-        // Update debug UI colors based on state
         if (CONFIG.showDebugMenu) {
-          const stateDisplay = document.getElementById('debug-state');
-          stateDisplay.innerText = newState;
-          if (newState === 'talking') stateDisplay.style.color = '#e74c3c'; // Red
-          else if (newState === 'resting') stateDisplay.style.color = '#2ecc71'; // Green
-          else stateDisplay.style.color = '#f1c40f'; // Yellow for other idles
+          document.getElementById('debug-state').innerText = newState;
+          document.getElementById('debug-state').style.color = (newState === 'talking') ? '#e74c3c' : '#f1c40f';
         }
       }
 
-      // Logic to pick a random idle animation without repeating
+      // Helper function to pick a random idle animation without repeating
       getRandomIdleState() {
         let nextState = this.idleSequence[Math.floor(Math.random() * this.idleSequence.length)];
         
-        // Prevent picking the exact same idle GIF twice in a row
+        // Loop until we get a DIFFERENT animation than the current one
         while (nextState === this.currentState && this.idleSequence.length > 1) {
           nextState = this.idleSequence[Math.floor(Math.random() * this.idleSequence.length)];
         }
@@ -245,10 +180,10 @@
       startIdleCycle() {
         this.stopIdleCycle(); 
         
-        // Pick a random animation immediately upon starting the cycle
+        // Instantly trigger a random resting animation
         this.setState(this.getRandomIdleState());
         
-        // Change to another random animation every 10 seconds
+        // Switch to a new random animation every 10 seconds
         this.idleCycleTimer = setInterval(() => {
           this.setState(this.getRandomIdleState());
         }, CONFIG.idleCycleTimeMs);
@@ -261,21 +196,20 @@
         }
       }
 
-      // Called constantly by the AudioEngine on every animation frame
       processAudioFrame(volume) {
         const isLoud = volume > CONFIG.volumeThreshold;
 
-        // Update Debug UI Live Meter
+        // Update visual Debug Meter Live
         if (CONFIG.showDebugMenu) {
           document.getElementById('debug-vol').innerText = Math.round(volume);
           const volPercent = Math.min((volume / 100) * 100, 100);
           const bar = document.getElementById('vol-bar');
           bar.style.width = volPercent + '%';
-          bar.style.background = isLoud ? '#e74c3c' : '#2ecc71'; // Turn red if over threshold
+          bar.style.background = isLoud ? 'red' : 'lime';
         }
 
         if (isLoud) {
-          // If we detect sound, clear any pending drop-to-idle timeouts
+          // If sound detected, clear any pending timeouts dropping us back to idle
           if (this.talkHoldTimer) {
             clearTimeout(this.talkHoldTimer);
             this.talkHoldTimer = null;
@@ -283,14 +217,13 @@
           
           if (this.currentState !== 'talking') {
             this.stopIdleCycle(); 
-            this.setState('talking'); // Instant snap to talking
+            this.setState('talking'); // Instant cut to talking GIF
           }
         } else {
-          // If volume drops below threshold, wait for 'holdTimeMs' before returning to idle.
-          // This debounces tiny pauses between syllables.
+          // If we drop below threshold, cut back to random idle almost instantly (50ms)
           if (this.currentState === 'talking' && !this.talkHoldTimer) {
             this.talkHoldTimer = setTimeout(() => {
-              this.startIdleCycle(); // Snap instantly to a random idle
+              this.startIdleCycle(); 
               this.talkHoldTimer = null;
             }, CONFIG.holdTimeMs);
           }
@@ -310,18 +243,23 @@
 
       async start() {
         try {
-          // This triggers the browser's microphone permission prompt
+          // Directly requests the browser's native microphone prompt immediately
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
           
           const AudioContext = window.AudioContext || window.webkitAudioContext;
           this.audioContext = new AudioContext();
+
+          // Resume audio context in case the browser suspended it due to auto-play policies
+          if (this.audioContext.state === 'suspended') {
+            await this.audioContext.resume();
+          }
+
           this.analyser = this.audioContext.createAnalyser();
-          
           this.microphone = this.audioContext.createMediaStreamSource(stream);
           this.microphone.connect(this.analyser);
 
-          // Configure analyser for highly responsive volume reading
-          this.analyser.smoothingTimeConstant = 0.2; // Low smoothing for instant reaction
+          // Fast smoothing constant for snappy visual reaction
+          this.analyser.smoothingTimeConstant = 0.2; 
           this.analyser.fftSize = 256;
           this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
 
@@ -329,12 +267,7 @@
           this.loop();
           return true;
         } catch (err) {
-          console.error("Microphone access blocked or failed:", err);
-          document.getElementById('start-overlay').innerHTML = `
-            <h1 style="color:#e74c3c;">Microphone Blocked</h1>
-            <p>Please allow microphone access in your browser settings and refresh the page.</p>
-          `;
-          document.getElementById('start-overlay').style.display = 'flex';
+          console.error("Microphone natively blocked by browser:", err);
           return false;
         }
       }
@@ -350,41 +283,27 @@
         }
         let averageVolume = sum / this.dataArray.length;
 
-        // Send the average volume back to the AvatarBrain
         this.onVolumeUpdate(averageVolume);
-        
-        // Loop continuously matching monitor refresh rate
         requestAnimationFrame(() => this.loop());
       }
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
+      // Pre-cache GIF files for instant swapping
       preloadAssets();
 
       const avatarImg = document.getElementById('avatar');
-      const startOverlay = document.getElementById('start-overlay');
       
       const avatarController = new AvatarBrain(avatarImg);
       const audioEngine = new AudioEngine((volume) => {
         avatarController.processAudioFrame(volume);
       });
 
-      // Set the initial image so it isn't blank before clicking start
-      avatarImg.src = CONFIG.assets['resting'];
+      // Start the 10-second random GIF loop immediately
+      avatarController.startIdleCycle();
 
-      // Handle the user interaction requirement
-      startOverlay.addEventListener('click', async () => {
-        // Hide the overlay
-        startOverlay.style.display = 'none';
-
-        // Start listening to the mic
-        const started = await audioEngine.start();
-        
-        // If mic connected successfully, start the animation cycles
-        if (started) {
-          avatarController.startIdleCycle();
-        }
-      });
+      // Trigger the native browser microphone prompt automatically
+      await audioEngine.start();
     });
   </script>
 </body>
