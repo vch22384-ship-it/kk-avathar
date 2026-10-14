@@ -122,10 +122,7 @@
       },
 
       // AUDIO SENSITIVITY TWEAKS
-      // If the avatar keeps talking when you are quiet, INCREASE this number.
       volumeThreshold: 35, 
-      
-      // Makes the cut-off almost instant (50 milliseconds) when you stop talking.
       holdTimeMs: 50,     
 
       // Idle Sequence Timing (Strict 10-second cycles)
@@ -139,7 +136,6 @@
     if (CONFIG.showDebugMenu) {
       document.getElementById('debug-ui').style.display = 'block';
       document.getElementById('debug-thresh').innerText = CONFIG.volumeThreshold;
-      // Position the red threshold line on the visual bar
       const threshPercent = Math.min((CONFIG.volumeThreshold / 100) * 100, 100);
       document.getElementById('thresh-line').style.left = threshPercent + '%';
     }
@@ -158,8 +154,9 @@
         this.currentState = null;
         this.idleCycleTimer = null;
         this.talkHoldTimer = null;
+        
+        // Add as many idle states here as you want!
         this.idleSequence = ['resting', 'stretch', 'pushup'];
-        this.currentIdleIndex = 0;
       }
 
       setState(newState) {
@@ -175,14 +172,25 @@
         }
       }
 
+      // NEW: Randomizer function
+      getRandomIdleState() {
+        // Filter out the current state so it doesn't play the exact same GIF twice in a row
+        const availableStates = this.idleSequence.filter(state => state !== this.currentState);
+        
+        // Pick a random index from the remaining options
+        const randomIndex = Math.floor(Math.random() * availableStates.length);
+        return availableStates[randomIndex];
+      }
+
       startIdleCycle() {
         this.stopIdleCycle(); 
-        this.currentIdleIndex = 0; 
-        this.setState(this.idleSequence[this.currentIdleIndex]);
         
+        // 1. Pick a random idle GIF immediately after you stop talking
+        this.setState(this.getRandomIdleState());
+        
+        // 2. Start the timer to pick a NEW random state every 10 seconds
         this.idleCycleTimer = setInterval(() => {
-          this.currentIdleIndex = (this.currentIdleIndex + 1) % this.idleSequence.length;
-          this.setState(this.idleSequence[this.currentIdleIndex]);
+          this.setState(this.getRandomIdleState());
         }, CONFIG.idleCycleTimeMs);
       }
 
@@ -217,7 +225,7 @@
           }
         } else {
           if (this.currentState === 'talking' && !this.talkHoldTimer) {
-            // Cut back to resting almost instantly (50ms)
+            // Cut back to a random idle animation almost instantly
             this.talkHoldTimer = setTimeout(() => {
               this.startIdleCycle(); 
               this.talkHoldTimer = null;
@@ -287,9 +295,6 @@
         avatarController.processAudioFrame(volume);
       });
 
+      // Jump right into the random idle cycle
       avatarController.startIdleCycle();
-      await audioEngine.start();
-    });
-  </script>
-</body>
-</html>
+      await audioEngine
