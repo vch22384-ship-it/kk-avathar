@@ -96,24 +96,31 @@
   </div>
 
   <script>
-  
     const CONFIG = {
+      // Set to false to use your actual GIF files for OBS/Vercel
       usePlaceholders: false, 
       
+      // Set to false to hide the volume meter
       showDebugMenu: true, 
 
       files: {
         resting: 'resting.gif',
         talking: 'talking.gif',
         stretch: 'stretch.gif',
-        pushup:  'pushup.gif'
+        pushup:  'pushup.gif',
+        walking: 'walking.gif',   // Added walking
+        fighting: 'fighting.gif', // Added fighting
+        coin:    'coin.gif'       // Added coin
       },
 
       placeholders: {
         resting: 'https://placehold.co/600x600/2ecc71/ffffff?text=Resting+(Quiet)',
         talking: 'https://placehold.co/600x600/e74c3c/ffffff?text=Talking!!!',
         stretch: 'https://placehold.co/600x600/f1c40f/ffffff?text=Stretching...',
-        pushup:  'https://placehold.co/600x600/3498db/ffffff?text=Doing+Pushups...'
+        pushup:  'https://placehold.co/600x600/3498db/ffffff?text=Doing+Pushups...',
+        walking: 'https://placehold.co/600x600/9b59b6/ffffff?text=Walking...',
+        fighting: 'https://placehold.co/600x600/e67e22/ffffff?text=Fighting!',
+        coin:    'https://placehold.co/600x600/f39c12/ffffff?text=Flipping+Coin'
       },
 
       volumeThreshold: 35, 
@@ -148,7 +155,8 @@
         this.idleCycleTimer = null;
         this.talkHoldTimer = null;
         
-        this.idleSequence = ['resting', 'stretch', 'pushup'];
+        // Expanded idle pool. These will be randomly selected when you are NOT talking.
+        this.idleSequence = ['resting', 'stretch', 'pushup', 'walking', 'fighting', 'coin'];
       }
 
       setState(newState) {
@@ -166,6 +174,7 @@
       getRandomIdleState() {
         let nextState = this.idleSequence[Math.floor(Math.random() * this.idleSequence.length)];
         
+        // Ensure we don't pick the exact same animation twice in a row
         while (nextState === this.currentState && this.idleSequence.length > 1) {
           nextState = this.idleSequence[Math.floor(Math.random() * this.idleSequence.length)];
         }
